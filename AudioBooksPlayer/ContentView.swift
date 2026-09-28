@@ -3,6 +3,7 @@ import UIKit
 
 struct ContentView: View {
     @StateObject private var audioPlayer = AudioPlayer()
+    @StateObject private var wifiServer = WiFiTransferServer()
     @AppStorage("backgroundStyle") private var backgroundStyle = "lightGray"
     @AppStorage("fontSize") private var fontSize = 1
     @AppStorage("cardSize") private var cardSize = 1
@@ -10,6 +11,7 @@ struct ContentView: View {
     @AppStorage("sortAscending") private var sortAscending = true
     @State private var searchText = ""
     @State private var showingSettings = false
+    @State private var showingWiFiTransfer = false
 
     private var bg: Color {
         switch backgroundStyle {
@@ -79,6 +81,9 @@ struct ContentView: View {
                     Button { audioPlayer.reloadLibrary() } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    Button { showingWiFiTransfer = true } label: {
+                        Image(systemName: "wifi")
+                    }
                     Button { showingSettings = true } label: {
                         Image(systemName: "gearshape.fill")
                     }
@@ -86,6 +91,12 @@ struct ContentView: View {
             }
             .navigationDestination(for: AudioBook.self) { book in
                 PlayerView(book: book, player: audioPlayer, fontSize: fontSize, background: bg)
+            }
+            .sheet(isPresented: $showingWiFiTransfer) {
+                WiFiTransferView(server: wifiServer) {
+                    audioPlayer.reloadLibrary()
+                }
+                .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(backgroundStyle: $backgroundStyle, fontSize: $fontSize, cardSize: $cardSize, sortMode: $sortMode, sortAscending: $sortAscending)
@@ -189,6 +200,90 @@ struct EmptyLibraryView: View {
                 .font(.footnote.monospaced()).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 60)
+    }
+}
+
+struct WiFiTransferView: View {
+    @ObservedObject var server: WiFiTransferServer
+    let reloadLibrary: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Image(systemName: server.isRunning ? "wifi" : "wifi.slash")
+                    .font(.system(size: 50))
+                    .foregroundStyle(server.isRunning ? .blue : .secondary)
+
+                Text("Передача книг по Wi-Fi")
+                    .font(.title2.weight(.bold))
+
+                if server.isRunning {
+                    Text("На Windows откройте в браузере:")
+                        .foregroundStyle(.secondary)
+
+                    Text(server.address)
+                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+
+                    Text("Выберите папку аудиокниги. Все MP3 и обложки будут сохранены в Books.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    if server.uploadedCount > 0 {
+                        Text("Загружено файлов: \(server.uploadedCount)")
+                            .font(.headline)
+                        if !server.lastUploadedPath.isEmpty {
+                            Text(server.lastUploadedPath)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+
+                    Button("Обновить библиотеку") {
+                        reloadLibrary()
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("Остановить сервер") {
+                        server.stop()
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Text(server.status)
+                        .foregroundStyle(.secondary)
+
+                    if let error = server.errorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    Button("Запустить передачу") {
+                        server.start()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Spacer()
+            }
+            .padding(24)
+            .navigationTitle("Wi-Fi")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                server.start()
+            }
+            .onDisappear {
+                server.stop()
+                reloadLibrary()
+            }
+        }
     }
 }
 
