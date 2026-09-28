@@ -381,7 +381,7 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         isPlaying = false
         currentTime = duration
 
-        if stopAfterTrack || sleepAfterCurrentTrack {
+        if sleepAfterCurrentTrack {
             sleepAfterCurrentTrack = false
             cancelSleepTimer()
             saveCurrentState()
