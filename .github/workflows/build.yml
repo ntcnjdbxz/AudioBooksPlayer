@@ -17,7 +17,7 @@ jobs:
             -target AudioBooksPlayer \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            CONFIGURATION_BUILD_DIR="$PWD/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             DEVELOPMENT_TEAM="" \
@@ -26,7 +26,7 @@ jobs:
       - name: Package unsigned IPA
         run: |
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/AudioBooksPlayer.app Payload/
+          cp -R build/AudioBooksPlayer.app Payload/
           zip -r AudioBooksPlayer-unsigned.ipa Payload
           rm -rf Payload
 
