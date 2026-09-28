@@ -221,13 +221,63 @@ struct WiFiTransferView: View {
                     Text("На Windows откройте в браузере:")
                         .foregroundStyle(.secondary)
 
-                    Text(server.address)
-                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+                    let urlInfo = URLComponents(string: server.address)
+                    let host = urlInfo?.host ?? "—"
+                    let port = urlInfo?.port.map(String.init) ?? "—"
+
+                    VStack(spacing: 14) {
+                        VStack(spacing: 5) {
+                            Text("IP-адрес iPhone")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text(host)
+                                .font(.system(size: 23, weight: .semibold, design: .monospaced))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .textSelection(.enabled)
+                        }
+
+                        Divider()
+
+                        VStack(spacing: 5) {
+                            Text("ПОРТ")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text(port)
+                                .font(.system(size: 34, weight: .bold, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+
+                        Divider()
+
+                        VStack(spacing: 5) {
+                            Text("Полный адрес")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text(server.address)
+                                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.65)
+                                .allowsTightening(true)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity)
+                        }
+
+                        Button {
+                            UIPasteboard.general.string = server.address
+                        } label: {
+                            Label("Копировать полный адрес", systemImage: "doc.on.doc")
+                                .font(.subheadline)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
 
                     Text("Выберите папку аудиокниги. Все MP3 и обложки будут сохранены в Books.")
                         .font(.footnote)
