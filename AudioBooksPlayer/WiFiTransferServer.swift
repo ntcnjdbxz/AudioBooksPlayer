@@ -274,10 +274,12 @@ final class WiFiTransferServer: NSObject, ObservableObject {
 
         let target = parts[1]
         let components = URLComponents(string: "http://localhost\(target)")
-        let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).compactMap { item in
-            guard let value = item.value else { return nil }
-            return (item.name, value)
-        })
+        let query: [String: String] = Dictionary(
+            uniqueKeysWithValues: (components?.queryItems ?? []).compactMap { item -> (String, String)? in
+                guard let value = item.value else { return nil }
+                return (item.name, value)
+            }
+        )
 
         var headers: [String: String] = [:]
         for line in lines.dropFirst() {
