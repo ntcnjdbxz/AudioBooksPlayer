@@ -10,7 +10,6 @@ struct ContentView: View {
     @AppStorage("sortAscending") private var sortAscending = true
     @State private var searchText = ""
     @State private var showingSettings = false
-    @State private var selectedBook: AudioBook?
 
     private var bg: Color {
         switch backgroundStyle {
@@ -49,9 +48,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         if let lastBook = lastPlayedBook {
                             SectionTitle(title: "Продолжить", size: textSize(22))
-                            Button {
-                                selectedBook = lastBook
-                            } label: {
+                            NavigationLink(value: lastBook) {
                                 BookCard(book: lastBook, player: audioPlayer, size: cardSize, fontSize: fontSize, prominent: true)
                             }
                             .buttonStyle(.plain)
@@ -64,7 +61,7 @@ struct ContentView: View {
                         } else {
                             LazyVStack(spacing: 12) {
                                 ForEach(books) { book in
-                                    Button { selectedBook = book } label: {
+                                    NavigationLink(value: book) {
                                         BookCard(book: book, player: audioPlayer, size: cardSize, fontSize: fontSize)
                                     }
                                     .buttonStyle(.plain)
@@ -87,7 +84,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationDestination(item: $selectedBook) { book in
+            .navigationDestination(for: AudioBook.self) { book in
                 PlayerView(book: book, player: audioPlayer, fontSize: fontSize, background: bg)
             }
             .sheet(isPresented: $showingSettings) {
