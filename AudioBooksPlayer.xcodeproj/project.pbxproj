@@ -41,7 +41,6 @@
 			);
 			sourceTree = "<group>";
 		};
-
 		D10000000000000000000002 /* AudioBooksPlayer */ = {
 			isa = PBXGroup;
 			children = (
@@ -54,7 +53,6 @@
 			path = AudioBooksPlayer;
 			sourceTree = "<group>";
 		};
-
 		D10000000000000000000003 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -149,7 +147,6 @@
 			};
 			name = Debug;
 		};
-
 		F10000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -160,14 +157,13 @@
 			};
 			name = Release;
 		};
-
 		F10000000000000000000005 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AudioBooksPlayer/Info.plist;
@@ -179,14 +175,13 @@
 			};
 			name = Debug;
 		};
-
 		F10000000000000000000006 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AudioBooksPlayer/Info.plist;
@@ -210,7 +205,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-
 		F10000000000000000000002 /* Build configuration list for PBXNativeTarget "AudioBooksPlayer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -222,6 +216,5 @@
 		};
 /* End XCConfigurationList section */
 	};
-
 	rootObject = F10000000000000000000007 /* Project object */;
 }
