@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Darwin
+import UIKit
 
 final class WiFiTransferServer: NSObject, ObservableObject {
     @Published private(set) var isRunning = false
@@ -15,6 +16,11 @@ final class WiFiTransferServer: NSObject, ObservableObject {
     private let fm = FileManager.default
     private let maxHeaderSize = 64 * 1024
     private let receiveChunkSize = 1024 * 1024
+    private let inactivityTimeout: TimeInterval = 15 * 60
+    private let maximumRuntime: TimeInterval = 2 * 60 * 60
+    private var watchdogTimer: DispatchSourceTimer?
+    private var startedAt: Date?
+    private var lastActivityAt: Date?
     static let fixedPort: UInt16 = 61432
 
     deinit { stop() }
@@ -24,7 +30,10 @@ final class WiFiTransferServer: NSObject, ObservableObject {
         errorMessage = nil
         uploadedCount = 0
         lastUploadedPath = ""
+        startedAt = Date()
+        lastActivityAt = Date()
         status = "Запуск сервера…"
+        setScreenAwake(true)
 
         do {
             guard let port = NWEndpoint.Port(rawValue: Self.fixedPort) else {
@@ -49,16 +58,25 @@ final class WiFiTransferServer: NSObject, ObservableObject {
                         self.address = "http://\(host):\(port.rawValue)"
                         self.status = "Откройте адрес на компьютере"
                         self.isRunning = true
+                        self.startWatchdog()
                     case .failed(let error):
+                        self.stopWatchdog()
                         self.isRunning = false
                         self.status = "Ошибка сервера"
                         self.errorMessage = error.localizedDescription
                         listener.cancel()
                         self.listener = nil
+                        self.startedAt = nil
+                        self.lastActivityAt = nil
+                        self.setScreenAwake(false)
                     case .cancelled:
+                        self.stopWatchdog()
                         self.isRunning = false
                         self.status = "Сервер остановлен"
                         self.listener = nil
+                        self.startedAt = nil
+                        self.lastActivityAt = nil
+                        self.setScreenAwake(false)
                     default:
                         break
                     }
@@ -70,15 +88,23 @@ final class WiFiTransferServer: NSObject, ObservableObject {
             }
             listener.start(queue: queue)
         } catch {
+            stopWatchdog()
             isRunning = false
             status = "Ошибка сервера"
             errorMessage = error.localizedDescription
+            startedAt = nil
+            lastActivityAt = nil
+            setScreenAwake(false)
         }
     }
 
     func stop() {
+        stopWatchdog()
         listener?.cancel()
         listener = nil
+        startedAt = nil
+        lastActivityAt = nil
+        setScreenAwake(false)
         DispatchQueue.main.async {
             self.isRunning = false
             self.address = ""
@@ -86,7 +112,54 @@ final class WiFiTransferServer: NSObject, ObservableObject {
         }
     }
 
+    private func startWatchdog() {
+        stopWatchdog()
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let now = Date()
+
+            if let startedAt = self.startedAt, now.timeIntervalSince(startedAt) >= self.maximumRuntime {
+                self.statusOnMain("Сервер автоматически остановлен (2 часа)")
+                self.stop()
+                return
+            }
+
+            if let lastActivityAt = self.lastActivityAt, now.timeIntervalSince(lastActivityAt) >= self.inactivityTimeout {
+                self.statusOnMain("Сервер автоматически остановлен (15 минут бездействия)")
+                self.stop()
+            }
+        }
+        watchdogTimer = timer
+        timer.resume()
+    }
+
+    private func stopWatchdog() {
+        watchdogTimer?.setEventHandler {}
+        watchdogTimer?.cancel()
+        watchdogTimer = nil
+    }
+
+    private func touchActivity() {
+        lastActivityAt = Date()
+    }
+
+    private func statusOnMain(_ value: String) {
+        DispatchQueue.main.async {
+            self.status = value
+        }
+    }
+
+    private func setScreenAwake(_ awake: Bool) {
+        DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = awake
+        }
+    }
+
     private func handle(_ connection: NWConnection) {
+        touchActivity()
         connection.stateUpdateHandler = { [weak self, weak connection] state in
             guard let self, let connection else { return }
             switch state {
@@ -117,6 +190,7 @@ final class WiFiTransferServer: NSObject, ObservableObject {
             if let range = combined.range(of: Data([13, 10, 13, 10])) {
                 let headerData = combined.subdata(in: 0..<range.lowerBound)
                 let bodyStart = range.upperBound
+                self.touchActivity()
                 guard let header = String(data: headerData, encoding: .utf8),
                       let request = self.parseRequest(header) else {
                     self.sendResponse(connection, status: 400, body: "Bad Request")
@@ -255,6 +329,7 @@ final class WiFiTransferServer: NSObject, ObservableObject {
             }
 
             let newReceived = received + Int64(count)
+            self.touchActivity()
             self.publishProgress(path: relativePath, received: newReceived, total: totalBytes)
 
             if newReceived >= totalBytes {

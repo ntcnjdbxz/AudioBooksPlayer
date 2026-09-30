@@ -108,7 +108,8 @@ struct ContentView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     Button { showingWiFiTransfer = true } label: {
-                        Image(systemName: "wifi")
+                        Image(systemName: wifiServer.isRunning ? "wifi" : "wifi.slash")
+                            .foregroundStyle(wifiServer.isRunning ? .green : .secondary)
                     }
                     Button { showingSettings = true } label: {
                         Image(systemName: "gearshape.fill")
@@ -122,7 +123,8 @@ struct ContentView: View {
                 WiFiTransferView(server: wifiServer) {
                     audioPlayer.reloadLibrary()
                 }
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(backgroundStyle: $backgroundStyle, fontSize: $fontSize, cardSize: $cardSize, sortMode: $sortMode, sortAscending: $sortAscending)
@@ -240,7 +242,7 @@ struct WiFiTransferView: View {
                     .font(.title2.weight(.bold))
 
                 if server.isRunning {
-                    Text("На Windows откройте в браузере:")
+                    Text("На компьютере откройте в браузере:")
                         .foregroundStyle(.secondary)
 
                     let urlInfo = URLComponents(string: server.address)
@@ -348,11 +350,7 @@ struct WiFiTransferView: View {
             .padding(24)
             .navigationTitle("Wi-Fi")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                server.start()
-            }
             .onDisappear {
-                server.stop()
                 reloadLibrary()
             }
         }
