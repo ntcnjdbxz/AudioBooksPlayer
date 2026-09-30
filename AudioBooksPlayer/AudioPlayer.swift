@@ -46,6 +46,7 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     private var sleepTimer: Timer?
     private var playbackStates: [String: PlaybackState] = [:]
     private let fm = FileManager.default
+    static let inProgressThreshold: TimeInterval = 5 * 60
 
     override init() {
         super.init()
@@ -281,7 +282,9 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     func bookProgress(_ book: AudioBook) -> Double {
         guard book.totalDuration > 0 else { return 0 }
-        guard let state = playbackStates[book.id], !state.completed else { return 0 }
+        guard let state = playbackStates[book.id] else { return 0 }
+        if state.completed { return 1 }
+
         let before = book.tracks.prefix { $0.lastPathComponent != state.trackName }
             .reduce(0) { $0 + AVAudioPlayer.durationForFile($1) }
         return min(1, max(0, (before + state.position) / book.totalDuration))
@@ -291,24 +294,25 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         playbackStates[book.id]?.lastPlayed
     }
 
+    func isCompleted(_ book: AudioBook) -> Bool {
+        playbackStates[book.id]?.completed == true
+    }
+
+    func isInProgress(_ book: AudioBook) -> Bool {
+        guard let state = playbackStates[book.id], !state.completed else { return false }
+        return bookProgress(book) * book.totalDuration >= Self.inProgressThreshold
+    }
+
     func stateDescription(for book: AudioBook) -> String {
-        guard let state = playbackStates[book.id], !state.completed,
+        if isCompleted(book) {
+            return "Прослушано"
+        }
+        guard let state = playbackStates[book.id],
               let index = book.tracks.firstIndex(where: { $0.lastPathComponent == state.trackName }) else {
             return "Не начато"
         }
         let chapter = index + 1
         return "Глава \(chapter) · \(formatTime(state.position))"
-    }
-
-    private func saveCurrentState() {
-        guard let book = currentBook, let player else { return }
-        playbackStates[book.id] = PlaybackState(
-            trackName: book.tracks[currentTrackIndex].lastPathComponent,
-            position: player.currentTime,
-            lastPlayed: Date(),
-            completed: false
-        )
-        savePersistence()
     }
 
     // MARK: - Bookmarks

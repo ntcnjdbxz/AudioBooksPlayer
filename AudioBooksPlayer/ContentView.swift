@@ -41,19 +41,33 @@ struct ContentView: View {
         }
     }
 
+    private var listeningNowBooks: [AudioBook] {
+        books.filter { audioPlayer.isInProgress($0) }
+            .sorted { (audioPlayer.lastPlayedDate(for: $0) ?? .distantPast) > (audioPlayer.lastPlayedDate(for: $1) ?? .distantPast) }
+    }
+
+    private var completedBooks: [AudioBook] {
+        books.filter { audioPlayer.isCompleted($0) }
+            .sorted { (audioPlayer.lastPlayedDate(for: $0) ?? .distantPast) > (audioPlayer.lastPlayedDate(for: $1) ?? .distantPast) }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 bg.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if let lastBook = lastPlayedBook {
-                            SectionTitle(title: "Продолжить", size: textSize(22))
-                            NavigationLink(value: lastBook) {
-                                BookCard(book: lastBook, player: audioPlayer, size: cardSize, fontSize: fontSize, prominent: true)
+                    VStack(alignment: .leading, spacing: 24) {
+                        if !listeningNowBooks.isEmpty {
+                            SectionTitle(title: "Слушаю сейчас", size: textSize(22))
+                            LazyVStack(spacing: 12) {
+                                ForEach(listeningNowBooks) { book in
+                                    NavigationLink(value: book) {
+                                        BookCard(book: book, player: audioPlayer, size: cardSize, fontSize: fontSize, prominent: true)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
 
                         SectionTitle(title: "Мои аудиокниги", size: textSize(22))
@@ -63,6 +77,18 @@ struct ContentView: View {
                         } else {
                             LazyVStack(spacing: 12) {
                                 ForEach(books) { book in
+                                    NavigationLink(value: book) {
+                                        BookCard(book: book, player: audioPlayer, size: cardSize, fontSize: fontSize)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        if !completedBooks.isEmpty {
+                            SectionTitle(title: "Прослушано", size: textSize(22))
+                            LazyVStack(spacing: 12) {
+                                ForEach(completedBooks) { book in
                                     NavigationLink(value: book) {
                                         BookCard(book: book, player: audioPlayer, size: cardSize, fontSize: fontSize)
                                     }
@@ -104,10 +130,6 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(backgroundStyle == "black" || backgroundStyle == "darkGray" ? .dark : .light)
-    }
-
-    private var lastPlayedBook: AudioBook? {
-        audioPlayer.books.first { audioPlayer.stateDescription(for: $0) != "Не начато" }
     }
 
     private func textSize(_ base: CGFloat) -> CGFloat {
@@ -241,7 +263,7 @@ struct WiFiTransferView: View {
                         Divider()
 
                         VStack(spacing: 5) {
-                            Text("ПОРТ")
+                            Text("ПОРТ · фиксированный")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 

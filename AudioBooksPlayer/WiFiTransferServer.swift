@@ -15,6 +15,7 @@ final class WiFiTransferServer: NSObject, ObservableObject {
     private let fm = FileManager.default
     private let maxHeaderSize = 64 * 1024
     private let receiveChunkSize = 1024 * 1024
+    static let fixedPort: UInt16 = 61432
 
     deinit { stop() }
 
@@ -26,7 +27,13 @@ final class WiFiTransferServer: NSObject, ObservableObject {
         status = "Запуск сервера…"
 
         do {
-            let listener = try NWListener(using: .tcp)
+            guard let port = NWEndpoint.Port(rawValue: Self.fixedPort) else {
+                errorMessage = "Некорректный фиксированный порт"
+                status = "Ошибка сервера"
+                return
+            }
+
+            let listener = try NWListener(using: .tcp, on: port)
             self.listener = listener
 
             listener.stateUpdateHandler = { [weak self] state in
