@@ -438,6 +438,28 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
+    private func saveCurrentState() {
+        guard let book = currentBook,
+              book.tracks.indices.contains(currentTrackIndex) else { return }
+
+        let track = book.tracks[currentTrackIndex]
+        let position = player?.currentTime ?? currentTime
+        let existing = playbackStates[book.id]
+
+        // Preserve a completed state only while the playback position is still at the end.
+        // If the user seeks back from the end, the book becomes in-progress again.
+        let isAtEnd = duration > 0 && position >= duration - 0.5
+        let completed = (existing?.completed == true) && isAtEnd
+
+        playbackStates[book.id] = PlaybackState(
+            trackName: track.lastPathComponent,
+            position: position,
+            lastPlayed: Date(),
+            completed: completed
+        )
+        savePersistence()
+    }
+
     // MARK: - Audio session / lifecycle / remote controls
 
     private func setupAudioSession() {
