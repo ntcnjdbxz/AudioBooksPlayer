@@ -46,6 +46,7 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     private var sleepTimer: Timer?
     private var playbackStates: [String: PlaybackState] = [:]
     private let fm = FileManager.default
+    private let persistenceBackupKey = "AudioBooksPlayer.persistence.backup.v1"
     static let inProgressThreshold: TimeInterval = 5 * 60
 
     override init() {
@@ -425,17 +426,40 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         let defaultsVolume = UserDefaults.standard.double(forKey: "playerVolume")
         volume = defaultsVolume == 0 && UserDefaults.standard.object(forKey: "playerVolume") == nil ? 1.0 : Float(defaultsVolume)
 
-        guard let data = try? Data(contentsOf: persistenceURL()),
-              let value = try? JSONDecoder().decode(Persistence.self, from: data) else { return }
-        playbackStates = value.playback
-        bookmarks = value.bookmarks
+        // First try the normal JSON file. This is the existing storage format and
+        // must remain the primary source of playback history.
+        if let data = try? Data(contentsOf: persistenceURL()),
+           let value = try? JSONDecoder().decode(Persistence.self, from: data) {
+            playbackStates = value.playback
+            bookmarks = value.bookmarks
+
+            // Keep a second copy in UserDefaults so an app update cannot leave
+            // us with an empty history if the file is unexpectedly lost.
+            UserDefaults.standard.set(data, forKey: persistenceBackupKey)
+            return
+        }
+
+        // Fallback for an existing installation where the JSON file disappeared
+        // or could not be decoded. Never replace the missing/invalid history with
+        // an empty state during startup.
+        if let data = UserDefaults.standard.data(forKey: persistenceBackupKey),
+           let value = try? JSONDecoder().decode(Persistence.self, from: data) {
+            playbackStates = value.playback
+            bookmarks = value.bookmarks
+
+            // Restore the normal file as well.
+            try? data.write(to: persistenceURL(), options: .atomic)
+        }
     }
 
     private func savePersistence() {
         let value = Persistence(playback: playbackStates, bookmarks: bookmarks)
-        if let data = try? JSONEncoder().encode(value) {
-            try? data.write(to: persistenceURL(), options: .atomic)
-        }
+        guard let data = try? JSONEncoder().encode(value) else { return }
+
+        // Write both copies. UserDefaults is a safety net for app updates; the
+        // JSON file remains the normal persistent storage used by the app.
+        try? data.write(to: persistenceURL(), options: .atomic)
+        UserDefaults.standard.set(data, forKey: persistenceBackupKey)
     }
 
     private func saveCurrentState() {
