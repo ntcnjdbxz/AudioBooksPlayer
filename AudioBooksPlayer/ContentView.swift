@@ -1,5 +1,24 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
+
+struct HistoryFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+
+    init(data: Data = Data()) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.data = data
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 struct ContentView: View {
     @StateObject private var audioPlayer = AudioPlayer()
@@ -12,6 +31,11 @@ struct ContentView: View {
     @State private var searchText = ""
     @State private var showingSettings = false
     @State private var showingWiFiTransfer = false
+    @State private var showingHistoryExporter = false
+    @State private var showingHistoryImporter = false
+    @State private var historyDocument = HistoryFileDocument(data: Data())
+    @State private var historyMessage: String?
+    @State private var bookToDelete: AudioBook?
 
     private var bg: Color {
         switch backgroundStyle {
@@ -24,7 +48,8 @@ struct ContentView: View {
 
     private var books: [AudioBook] {
         let filtered = audioPlayer.books.filter {
-            searchText.isEmpty || $0.title.localizedCaseInsensitiveContains(searchText)
+            !audioPlayer.isCompleted($0) &&
+            (searchText.isEmpty || $0.title.localizedCaseInsensitiveContains(searchText))
         }
         switch sortMode {
         case "lastPlayed":
@@ -47,8 +72,10 @@ struct ContentView: View {
     }
 
     private var completedBooks: [AudioBook] {
-        books.filter { audioPlayer.isCompleted($0) }
-            .sorted { (audioPlayer.lastPlayedDate(for: $0) ?? .distantPast) > (audioPlayer.lastPlayedDate(for: $1) ?? .distantPast) }
+        audioPlayer.books.filter {
+            audioPlayer.isCompleted($0) &&
+            (searchText.isEmpty || $0.title.localizedCaseInsensitiveContains(searchText))
+        }.sorted { (audioPlayer.lastPlayedDate(for: $0) ?? .distantPast) > (audioPlayer.lastPlayedDate(for: $1) ?? .distantPast) }
     }
 
     var body: some View {
@@ -66,6 +93,13 @@ struct ContentView: View {
                                         BookCard(book: book, player: audioPlayer, size: cardSize, fontSize: fontSize, prominent: true)
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            bookToDelete = book
+                                        } label: {
+                                            Label("Удалить аудиокнигу", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -81,6 +115,13 @@ struct ContentView: View {
                                         BookCard(book: book, player: audioPlayer, size: cardSize, fontSize: fontSize)
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            bookToDelete = book
+                                        } label: {
+                                            Label("Удалить аудиокнигу", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -93,6 +134,13 @@ struct ContentView: View {
                                         BookCard(book: book, player: audioPlayer, size: cardSize, fontSize: fontSize)
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            bookToDelete = book
+                                        } label: {
+                                            Label("Удалить аудиокнигу", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -111,6 +159,23 @@ struct ContentView: View {
                         Image(systemName: wifiServer.isRunning ? "wifi" : "wifi.slash")
                             .foregroundStyle(wifiServer.isRunning ? .green : .secondary)
                     }
+                    Button {
+                        do {
+                            historyDocument = HistoryFileDocument(data: try audioPlayer.exportHistoryData())
+                            showingHistoryExporter = true
+                        } catch {
+                            historyMessage = "Не удалось подготовить историю: \(error.localizedDescription)"
+                        }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Экспорт истории")
+
+                    Button { showingHistoryImporter = true } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .accessibilityLabel("Импорт истории")
+
                     Button { showingSettings = true } label: {
                         Image(systemName: "gearshape.fill")
                     }
@@ -129,6 +194,62 @@ struct ContentView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(backgroundStyle: $backgroundStyle, fontSize: $fontSize, cardSize: $cardSize, sortMode: $sortMode, sortAscending: $sortAscending)
                     .presentationDetents([.medium, .large])
+            }
+            .fileExporter(
+                isPresented: $showingHistoryExporter,
+                document: historyDocument,
+                contentType: .json,
+                defaultFilename: "AudioBooks-History"
+            ) { result in
+                switch result {
+                case .success:
+                    historyMessage = "История экспортирована. Сохрани файл в iCloud Drive."
+                case .failure(let error):
+                    historyMessage = "Экспорт не выполнен: \(error.localizedDescription)"
+                }
+            }
+            .fileImporter(
+                isPresented: $showingHistoryImporter,
+                allowedContentTypes: [.json],
+                allowsMultipleSelection: false
+            ) { result in
+                do {
+                    let urls = try result.get()
+                    guard let url = urls.first else { return }
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                    let data = try Data(contentsOf: url)
+                    try audioPlayer.importHistoryData(data)
+                    historyMessage = "История импортирована и объединена с текущей."
+                } catch {
+                    historyMessage = "Импорт не выполнен. Проверь, что выбран JSON-файл истории AudioBooks. \(error.localizedDescription)"
+                }
+            }
+            .alert("История AudioBooks", isPresented: Binding(
+                get: { historyMessage != nil },
+                set: { if !$0 { historyMessage = nil } }
+            )) {
+                Button("OK") { historyMessage = nil }
+            } message: {
+                Text(historyMessage ?? "")
+            }
+            .alert("Удалить аудиокнигу?", isPresented: Binding(
+                get: { bookToDelete != nil },
+                set: { if !$0 { bookToDelete = nil } }
+            )) {
+                Button("Отмена", role: .cancel) { bookToDelete = nil }
+                Button("Удалить", role: .destructive) {
+                    guard let book = bookToDelete else { return }
+                    do {
+                        try audioPlayer.deleteBookFiles(book)
+                        historyMessage = "Файлы книги удалены. Запись в истории и закладки сохранены."
+                    } catch {
+                        historyMessage = "Не удалось удалить файлы книги: \(error.localizedDescription)"
+                    }
+                    bookToDelete = nil
+                }
+            } message: {
+                Text("Будут удалены файлы книги с iPhone. История прослушивания и закладки останутся в файле истории.")
             }
         }
         .preferredColorScheme(backgroundStyle == "black" || backgroundStyle == "darkGray" ? .dark : .light)

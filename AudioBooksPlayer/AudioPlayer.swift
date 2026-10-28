@@ -116,7 +116,8 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
 
         return AudioBook(
-            id: folder.path,
+            // Stable across app re-sign/reinstall: sandbox absolute paths can change.
+            id: folder.lastPathComponent,
             folderURL: folder,
             title: folder.lastPathComponent,
             coverURL: coverURL,
@@ -411,6 +412,64 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
+    // MARK: - History export/import and library management
+
+    func exportHistoryData() throws -> Data {
+        let value = Persistence(playback: playbackStates, bookmarks: bookmarks)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(value)
+    }
+
+    func importHistoryData(_ data: Data) throws {
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(Persistence.self, from: data)
+        let imported = Persistence(
+            playback: Self.normalizedPlayback(decoded.playback),
+            bookmarks: Self.normalizedBookmarks(decoded.bookmarks)
+        )
+
+        // Merge rather than replace: importing a backup must not erase newer local entries.
+        for (bookID, incoming) in imported.playback {
+            if let local = playbackStates[bookID] {
+                if incoming.lastPlayed > local.lastPlayed {
+                    playbackStates[bookID] = incoming
+                } else if incoming.completed && !local.completed {
+                    playbackStates[bookID] = incoming
+                }
+            } else {
+                playbackStates[bookID] = incoming
+            }
+        }
+
+        var bookmarkIDs = Set(bookmarks.map(\.id))
+        for bookmark in imported.bookmarks where !bookmarkIDs.contains(bookmark.id) {
+            bookmarks.append(bookmark)
+            bookmarkIDs.insert(bookmark.id)
+        }
+        savePersistence()
+        objectWillChange.send()
+    }
+
+    func deleteBookFiles(_ book: AudioBook) throws {
+        // Save the current position before removing the files, but deliberately keep
+        // playbackStates and bookmarks so history survives deletion and re-import.
+        if currentBook?.id == book.id {
+            saveCurrentState()
+            player?.stop()
+            player = nil
+            stopTimer()
+            isPlaying = false
+            currentBook = nil
+            currentTrackIndex = 0
+            currentTime = 0
+            duration = 0
+            updateNowPlaying()
+        }
+        try fm.removeItem(at: book.folderURL)
+        scanLibrary()
+    }
+
     // MARK: - Persistence
 
     private func persistenceURL() -> URL {
@@ -422,6 +481,31 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         var bookmarks: [Bookmark]
     }
 
+    private static func normalizedPlayback(_ states: [String: PlaybackState]) -> [String: PlaybackState] {
+        var result: [String: PlaybackState] = [:]
+        for (oldID, state) in states {
+            let stableID = URL(fileURLWithPath: oldID).lastPathComponent
+            if let existing = result[stableID] {
+                if state.lastPlayed > existing.lastPlayed { result[stableID] = state }
+            } else {
+                result[stableID] = state
+            }
+        }
+        return result
+    }
+
+    private static func normalizedBookmarks(_ values: [Bookmark]) -> [Bookmark] {
+        values.map { bookmark in
+            Bookmark(
+                id: bookmark.id,
+                bookID: URL(fileURLWithPath: bookmark.bookID).lastPathComponent,
+                trackName: bookmark.trackName,
+                position: bookmark.position,
+                createdAt: bookmark.createdAt
+            )
+        }
+    }
+
     private func loadPersistence() {
         let defaultsVolume = UserDefaults.standard.double(forKey: "playerVolume")
         volume = defaultsVolume == 0 && UserDefaults.standard.object(forKey: "playerVolume") == nil ? 1.0 : Float(defaultsVolume)
@@ -430,8 +514,8 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         // must remain the primary source of playback history.
         if let data = try? Data(contentsOf: persistenceURL()),
            let value = try? JSONDecoder().decode(Persistence.self, from: data) {
-            playbackStates = value.playback
-            bookmarks = value.bookmarks
+            playbackStates = Self.normalizedPlayback(value.playback)
+            bookmarks = Self.normalizedBookmarks(value.bookmarks)
 
             // Keep a second copy in UserDefaults so an app update cannot leave
             // us with an empty history if the file is unexpectedly lost.
@@ -444,8 +528,8 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         // an empty state during startup.
         if let data = UserDefaults.standard.data(forKey: persistenceBackupKey),
            let value = try? JSONDecoder().decode(Persistence.self, from: data) {
-            playbackStates = value.playback
-            bookmarks = value.bookmarks
+            playbackStates = Self.normalizedPlayback(value.playback)
+            bookmarks = Self.normalizedBookmarks(value.bookmarks)
 
             // Restore the normal file as well.
             try? data.write(to: persistenceURL(), options: .atomic)
